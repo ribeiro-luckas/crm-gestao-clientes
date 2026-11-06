@@ -1,0 +1,32 @@
+# Segredos locais
+.env*
+!.env.example
+
+# Instruções locais de agentes de IA (preservadas no disco, fora do repositório)
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+**/AGENTS.md
+**/CLAUDE.md
+**/GEMINI.md
+
+.agents/
+.knowledge-base-path
+# Base de conhecimento local da fábrica, consultada por agentes
+docs/knowledge/
+
+# Dependências e saídas locais (previstas)
+node_modules/
+.next/
+out/
+coverage/
+playwright-report/
+test-results/
+playwright/.cache/
+screenshots/
+traces/
+artifacts/
+*.log
+*.trace.zip
+*.tsbuildinfo
+*.bak

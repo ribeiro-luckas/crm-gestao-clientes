@@ -1,0 +1,33 @@
+# Variáveis de ambiente
+
+Inventário estático das leituras de `process.env` em código, scripts e configurações rastreáveis. Nenhum arquivo `.env*` foi aberto para produzir esta tabela. Os testes também atribuem e removem variáveis durante execução; isso não cria requisito de deploy. Variáveis gerenciadas pela plataforma que não são lidas pelo código estão fora do inventário.
+
+| Nome | Responsabilidade | Obrigatória | Contexto | Tipo esperado / padrão | Sensível | Consumidores | Validação |
+|---|---|---:|---|---|---:|---|---|
+| `DATABASE_URL` | Conexão PostgreSQL do processo CRM; também comparada para impedir que URL de teste coincida com runtime. | Sim para runtime e algumas verificações/build Next | runtime; testes defensivos | String URL PostgreSQL; sem padrão seguro | Sim | `src/db/index.ts`, `tests/helpers/test-db.ts`, testes de integração, Playwright | `pg` analisa a URL; `src/db` falha se ausente. Não serve para migrations. |
+| `DATABASE_URL_MIGRATIONS` | Credencial dedicada para Drizzle Kit aplicar migrations. | Sim para `db:migrate` | migrations | String URL PostgreSQL; configuração de geração tem URL inválida de fallback que não aponta a banco | Sim | `drizzle.migrate.config.ts`, `drizzle.config.ts`, `scripts/debug-migrate.mjs` | Configuração de migrate falha se ausente; nunca reutiliza automaticamente `DATABASE_URL`. Revisar papel/permissões e destino antes de rodar. |
+| `BETTER_AUTH_SECRET` | Segredo criptográfico de Better Auth. | Sim ao inicializar auth | build Next coleta auth; runtime; testes | String com mínimo de 32 caracteres | Sim | `src/lib/auth.ts`, Playwright e testes | Rejeitado se ausente/curto. Build Render gera segredo efêmero sintético; não use esse valor em runtime. |
+| `BETTER_AUTH_URL` | Base URL pública do Better Auth e trusted origin. | Recomendada/necessária para implantação; local tem fallback | build, runtime, testes | URL absoluta; código usa `http://localhost:3000` como fallback | Não secreta, mas define origem de confiança | `src/lib/auth.ts`, bootstrap de testes, Playwright | Trusted origins contém essa origem. Em deploy, usar origem HTTPS exata do serviço. |
+| `NODE_ENV` | Seleciona modo Next e cookies seguros; testes de segurança forçam `production`. | Definida pelo framework | build/runtime/testes | `development`, `production` ou `test`; controlada por Next/runner | Não | `src/proxy.ts`, `src/lib/auth.ts`, testes | CSP dev/test é report-only; production força cookies Secure e CSP enforced. Não definir arbitrariamente em deploy. |
+| `CRM_TEST_MODE` | Direciona pool de aplicação ao guard de banco de teste em vez de `DATABASE_URL`. | Não; somente suites que exercitam camada DB | testes | String; modo ativo apenas exatamente `1` | Não | `src/db/index.ts`, testes de integração | Ao ativar, `TEST_DATABASE_URL` precisa apontar ao endpoint local permitido. |
+| `TEST_DATABASE_URL` | Conexão PostgreSQL exclusiva para integrações descartáveis. | Somente testes de integração que acessam DB | testes | URL PostgreSQL | Sim | `src/db/test-url.ts`, `tests/helpers/test-db.ts`, `drizzle.test.config.ts` | Host `127.0.0.1`, porta 5433, database `crm_test_isolated`, username `crm_test_admin`, senha presente; identidade é verificada após conexão. Não use em runtime/deploy. |
+| `CRM_OWNER_EMAIL` | Email sintético do usuário OWNER inicial. | Sim apenas no bootstrap pontual | bootstrap | String, trim + lowercase | Dado identificador; trate como dado de teste | `scripts/bootstrap-owner.ts` | Formato validado pelo script/Better Auth. Remover do ambiente após operação. |
+| `CRM_OWNER_PASSWORD` | Senha inicial do OWNER. | Sim apenas no bootstrap pontual | bootstrap | String | Sim | `scripts/bootstrap-owner.ts` | Política de senha Better Auth; nunca armazenar no repo, logs ou shell history. |
+| `CRM_OWNER_NAME` | Nome de exibição OWNER. | Sim apenas no bootstrap pontual | bootstrap | String, trim | Dados sintéticos | `scripts/bootstrap-owner.ts` | Validado antes da criação. |
+| `CRM_ORGANIZATION_NAME` | Nome da organização inicial. | Sim apenas no bootstrap pontual | bootstrap | String, trim | Não secreto | `scripts/bootstrap-owner.ts` | Validado antes da criação. |
+| `CRM_ORGANIZATION_SLUG` | Slug da organização inicial. | Sim apenas no bootstrap pontual | bootstrap | String, trim + lowercase | Não secreto | `scripts/bootstrap-owner.ts` | Validado pelo script/Better Auth. |
+| `CI` | Ativa política Playwright que proíbe `test.only`. | Não | testes E2E | Presente/truthy ativa | Não | `playwright.config.ts` | Avaliação booleana do valor. |
+| `RUN_MEMBER_ASSIGNMENT_INTEGRITY_TESTS` | Habilita suite que depende de banco isolado para integridade das atribuições. | Não | testes de integração | Suite habilitada somente com valor `1` | Não | `tests/integration/member-assignment-integrity.test.ts` | Deve ser ativada apenas no runner PostgreSQL descartável compatível. |
+| `RUN_TASK_DEAL_CLIENT_INTEGRITY_TESTS` | Habilita suite de integridade task/deal/client. | Não | testes de integração | Suite habilitada somente com valor `1` | Não | `tests/integration/task-deal-client-integrity.test.ts` | Deve ser ativada apenas no runner PostgreSQL descartável compatível. |
+
+## Separação de credenciais
+
+`DATABASE_URL` é usada pela aplicação em runtime e deve pertencer a um papel não administrativo com permissões mínimas necessárias. `DATABASE_URL_MIGRATIONS` é uma credencial distinta, disponível somente na operação controlada de migration e com privilégios DDL adequados. O projeto não tenta aplicar migrations na inicialização do servidor. `TEST_DATABASE_URL` é terceiro destino, restrito por código ao PostgreSQL isolado local; não deve ser configurado em Render.
+
+## Build e deploy
+
+O build atual pode carregar Better Auth e requer `BETTER_AUTH_SECRET` e `DATABASE_URL`. `scripts/render-build.sh` remove valores herdados dessas três variáveis e fornece uma chave efêmera, uma URL localhost sintética e uma URL `build.invalid` somente nos processos de instalação/build. Isso evita inserir credenciais reais do runtime no artefato; não significa que runtime possa iniciar sem valores próprios. Render recebe `BETTER_AUTH_SECRET` e `DATABASE_URL` como secrets do ambiente e `BETTER_AUTH_URL` derivada da URL HTTPS do serviço conforme `render.yaml`.
+
+## Origem do inventário
+
+Foram encontradas 15 chaves estáticas no código/configuração/script/tests. `NODE_ENV` e `CI` são convencões de ferramenta; as demais são configuração da aplicação ou flags de teste. Nenhum valor real foi coletado. Consulte [bootstrap](../guides/development.md#bootstrap-do-owner), [testes](../guides/testing.md) e [deploy](../guides/deployment.md).

@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: crm-gestao-clientes-demo
+    runtime: node
+    plan: free
+    autoDeployTrigger: off
+    healthCheckPath: /login
+    buildCommand: bash scripts/render-build.sh
+    startCommand: npm start
+    envVars:
+      - key: BETTER_AUTH_SECRET
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: BETTER_AUTH_URL
+        fromService:
+          type: web
+          name: crm-gestao-clientes-demo
+          envVarKey: RENDER_EXTERNAL_URL
